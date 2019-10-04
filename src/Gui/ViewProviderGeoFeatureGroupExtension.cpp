@@ -66,36 +66,8 @@ std::vector<App::DocumentObject*> ViewProviderGeoFeatureGroupExtension::extensio
 }
 
 std::vector<App::DocumentObject*> ViewProviderGeoFeatureGroupExtension::extensionClaimChildren(void) const {
-
     auto* group = getExtendedViewProvider()->getObject()->getExtensionByType<App::GeoFeatureGroupExtension>();
-    const std::vector<App::DocumentObject*> &model = group->Group.getValues ();
-    std::set<App::DocumentObject*> outSet; //< set of objects not to claim (childrens of childrens)
-
-    // search for objects handled (claimed) by the features
-    for (auto obj: model) {
-        //stuff in another geofeaturegroup is not in the model anyway
-        if (!obj || obj->hasExtension(App::GeoFeatureGroupExtension::getExtensionClassTypeId())) { continue; }
-        
-        Gui::ViewProvider* vp = Gui::Application::Instance->getViewProvider ( obj );
-        if (!vp || vp == getExtendedViewProvider()) { continue; }
-
-        auto children = vp->claimChildren();
-        std::remove_copy ( children.begin (), children.end (), std::inserter (outSet, outSet.begin () ), nullptr);
-    }
-
-    // remove the otherwise handled objects, preserving their order so the order in the TreeWidget is correct
-    std::vector<App::DocumentObject*> Result;
-    for(auto obj : model) {
-        if(!obj || !obj->getNameInDocument())
-            continue;
-        if(outSet.count(obj)) 
-            obj->setStatus(App::ObjectStatus::GeoExcluded,true);
-        else {
-            obj->setStatus(App::ObjectStatus::GeoExcluded,false);
-            Result.push_back(obj);
-        }
-    }
-    return Result;
+    return group->_ClaimedChildren.getValue();
 }
 
 void ViewProviderGeoFeatureGroupExtension::extensionAttach(App::DocumentObject* pcObject)
@@ -125,13 +97,42 @@ std::vector<std::string> ViewProviderGeoFeatureGroupExtension::extensionGetDispl
 
 void ViewProviderGeoFeatureGroupExtension::extensionUpdateData(const App::Property* prop)
 {
-    auto obj = getExtendedViewProvider()->getObject()->getExtensionByType<App::GeoFeatureGroupExtension>();
-    if (obj && prop == &obj->placement()) {
-        getExtendedViewProvider()->setTransformation ( obj->placement().getValue().toMatrix() );
-    }
-    else {
-        ViewProviderGroupExtension::extensionUpdateData ( prop );
-    }
+    auto group = getExtendedViewProvider()->getObject()->getExtensionByType<App::GeoFeatureGroupExtension>();
+    if(!group) {
+
+    } else if (prop == &group->Group) {
+
+        if(!prop->testStatus(App::Property::User3)) {
+
+            const std::vector<App::DocumentObject*> &model = group->Group.getValues ();
+            std::set<App::DocumentObject*> outSet; //< set of objects not to claim (childrens of childrens)
+
+            // search for objects handled (claimed) by the features
+            for (auto obj: model) {
+                //stuff in another geofeaturegroup is not in the model anyway
+                if (!obj || obj->hasExtension(App::GeoFeatureGroupExtension::getExtensionClassTypeId())) { continue; }
+
+                Gui::ViewProvider* vp = Gui::Application::Instance->getViewProvider ( obj );
+                if (!vp || vp == getExtendedViewProvider()) { continue; }
+
+                auto children = vp->claimChildren();
+                std::remove_copy ( children.begin (), children.end (), std::inserter (outSet, outSet.begin () ), nullptr);
+            }
+
+            // remove the otherwise handled objects, preserving their order so the order in the TreeWidget is correct
+            std::vector<App::DocumentObject*> Result;
+            for(auto obj : model) {
+                if(!obj || !obj->getNameInDocument())
+                    continue;
+                if(!outSet.count(obj)) 
+                    Result.push_back(obj);
+            }
+            group->_ClaimedChildren.setValues(Result);
+        }
+    } else if(prop == &group->placement()) 
+        getExtendedViewProvider()->setTransformation ( group->placement().getValue().toMatrix() );
+
+    ViewProviderGroupExtension::extensionUpdateData ( prop );
 }
 
 namespace Gui {

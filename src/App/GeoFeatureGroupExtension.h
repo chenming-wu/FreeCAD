@@ -54,6 +54,9 @@ class AppExport GeoFeatureGroupExtension : public App::GroupExtension
     EXTENSION_PROPERTY_HEADER_WITH_OVERRIDE(App::GeoFeatureGroupExtension);
 
 public:
+    PropertyBool QueryChildExport;
+    PropertyLinkList _ClaimedChildren;
+
     PropertyPlacement& placement();
     
     virtual void initExtension(ExtensionContainer* obj) override;
@@ -100,8 +103,6 @@ public:
     virtual bool extensionGetSubObject(DocumentObject *&ret, const char *subname, PyObject **pyObj,
             Base::Matrix4D *mat, bool transform, int depth) const override;
 
-    virtual bool extensionGetSubObjects(std::vector<std::string> &ret, int reason) const override;
-    
     virtual std::vector< DocumentObject* > addObjects(std::vector< DocumentObject* > obj) override;
     virtual std::vector< DocumentObject* > removeObjects(std::vector< DocumentObject* > obj) override;
     
@@ -119,6 +120,11 @@ public:
     //links of obj
     static void getInvalidLinkObjects(const App::DocumentObject* obj, std::vector<App::DocumentObject*>& vec);
     
+protected:
+    virtual const PropertyLinkList& getClaimedGroupProperty() const override {
+        return _ClaimedChildren;
+    }
+
 private:
     Base::Placement recursiveGroupPlacement(GeoFeatureGroupExtension* group);
     static std::vector<App::DocumentObject*> getScopedObjectsFromLinks(const App::DocumentObject*, LinkScope scope = LinkScope::Local);
@@ -135,7 +141,6 @@ private:
     
     static void recursiveCSRelevantLinks(const App::DocumentObject* obj,
                                          std::vector<App::DocumentObject*>& vec);
- 
 };
 
 typedef ExtensionPythonT<GroupExtensionPythonT<GeoFeatureGroupExtension>> GeoFeatureGroupExtensionPython;

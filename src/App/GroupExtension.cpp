@@ -35,6 +35,8 @@
 #include <Base/Console.h>
 #include <Base/Tools.h>
 
+FC_LOG_LEVEL_INIT("App",true,true);
+
 using namespace App;
 
 EXTENSION_PROPERTY_SOURCE(App::GroupExtension, App::DocumentObjectExtension)
@@ -47,10 +49,47 @@ GroupExtension::GroupExtension()
 
     EXTENSION_ADD_PROPERTY_TYPE(_GroupTouched, (false), "Base", 
             PropertyType(Prop_Hidden|Prop_Transient),0);
+
+    static const char *ExportModeEnum[] = {"Disabled", "By Visibility", "Child Query", "Both", 0};
+    ExportMode.setEnums(ExportModeEnum);
+    ExportMode.setStatus(Property::Hidden,true);
+    EXTENSION_ADD_PROPERTY_TYPE(ExportMode,(EXPORT_DISABLED),"Base",(App::PropertyType)(Prop_None),
+            "Disabled: do not export any child.\n\n"
+            "By Visibility: export all children with their current visibility. Note, depending\n"
+            "on your exporter setting, invisible object may or may not be exported.\n\n"
+            "Child Query: export only children whose property 'Enable Export' is set to True.\n"
+            "and export them as visible object regardless of their actual visibility.\n\n"
+            "Both: same as 'Child Query' but with their current visibility.");
+
 }
 
 GroupExtension::~GroupExtension()
 {
+}
+
+bool GroupExtension::queryChildExport(App::DocumentObject *obj) const {
+    if(!obj || !obj->getNameInDocument())
+        return false;
+    switch(ExportMode.getValue()) {
+    case EXPORT_DISABLED:
+        return false;
+    case EXPORT_BY_VISIBILITY:
+        return true;
+    default:
+        break;
+    }
+    auto prop = obj->getPropertyByName("Group_EnableExport");
+    if(prop) {
+        if(!prop->isDerivedFrom(PropertyBool::getClassTypeId())) {
+            if(FC_LOG_INSTANCE.isEnabled(FC_LOGLEVEL_LOG))
+                FC_WARN("Unexpected property type of " <<  prop->getFullName());
+            return true;
+        }
+        return static_cast<PropertyBool*>(prop)->getValue();
+    }
+    prop = obj->addDynamicProperty("App::PropertyBool","Group_EnableExport","Group");
+    static_cast<App::PropertyBool*>(prop)->setValue(true);
+    return true;
 }
 
 DocumentObject* GroupExtension::addObject(const char* sType, const char* pObjectName)
@@ -347,12 +386,17 @@ void GroupExtension::extensionOnChanged(const Property* p) {
         }
     }
 
-    if(p == &Group) {
+    if((p == &getClaimedGroupProperty() && !p->testStatus(Property::User3)) || p == &ExportMode) {
         _Conns.clear();
-        for(auto obj : Group.getValue()) {
-            if(obj && obj->getNameInDocument()) {
-                _Conns[obj] = obj->signalChanged.connect(boost::bind(
-                            &GroupExtension::slotChildChanged,this,_1,_2));
+        int mode = ExportMode.getValue();
+        if(mode != EXPORT_DISABLED) {
+            for(auto obj : getClaimedGroupProperty().getValues()) {
+                if(!obj || !obj->getNameInDocument())
+                    continue;
+                queryChildExport(obj);
+                if(mode != EXPORT_BY_CHILD_QUERY)
+                    _Conns[obj] = obj->signalChanged.connect(boost::bind(
+                                    &GroupExtension::slotChildChanged,this,_1,_2));
             }
         }
     }
@@ -393,12 +437,23 @@ bool GroupExtension::extensionGetSubObject(DocumentObject *&ret, const char *sub
     return ret->getSubObject(dot+1,pyObj,mat,true,depth+1);
 }
 
-bool GroupExtension::extensionGetSubObjects(std::vector<std::string> &ret, int) const {
-    for(auto obj : Group.getValues()) {
-        if(obj && obj->getNameInDocument())
-            ret.push_back(std::string(obj->getNameInDocument())+'.');
+bool GroupExtension::extensionGetSubObjects(std::vector<std::string> &ret, int reason) const {
+    if(reason == DocumentObject::GS_DEFAULT && ExportMode.getValue() == EXPORT_DISABLED)
+        return true;
+
+    for(auto obj : getClaimedGroupProperty().getValues()) {
+        if(obj && obj->getNameInDocument()) {
+            if(reason!=DocumentObject::GS_DEFAULT || queryChildExport(obj))
+                ret.push_back(std::string(obj->getNameInDocument())+'.');
+        }
     }
     return true;
+}
+
+int GroupExtension::extensionIsElementVisible(const char *) const {
+    if(ExportMode.getValue() == EXPORT_BY_CHILD_QUERY)
+        return 1;
+    return -1;
 }
 
 App::DocumentObjectExecReturn *GroupExtension::extensionExecute(void) {

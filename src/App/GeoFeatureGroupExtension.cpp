@@ -52,6 +52,11 @@ GeoFeatureGroupExtension::GeoFeatureGroupExtension(void)
 {
     initExtensionType(GeoFeatureGroupExtension::getExtensionClassTypeId());
     Group.setScope(LinkScope::Child);
+
+    _ClaimedChildren.setScope(LinkScope::Hidden);
+    _ClaimedChildren.setStatus(Property::NoModify,true);
+    EXTENSION_ADD_PROPERTY_TYPE(_ClaimedChildren,(0),"Base",
+            (App::PropertyType)(Prop_Output|Prop_NoPersist|Prop_Hidden|Prop_ReadOnly),"");
 }
 
 GeoFeatureGroupExtension::~GeoFeatureGroupExtension(void)
@@ -135,6 +140,8 @@ std::vector<DocumentObject*> GeoFeatureGroupExtension::addObjects(std::vector<Ap
     
     std::vector<DocumentObject*> grp = Group.getValues();
     std::vector<DocumentObject*> ret;
+
+    auto owner = getExtendedObject();
     
     for(auto object : objects) {
         
@@ -148,7 +155,7 @@ std::vector<DocumentObject*> GeoFeatureGroupExtension::addObjects(std::vector<Ap
         for( auto obj : links) {
             //only one geofeaturegroup per object. 
             auto *group = App::GeoFeatureGroupExtension::getGroupOfObject(obj);
-            if(group && group != getExtendedObject())
+            if(group && group != owner)
                 group->getExtensionByType<App::GroupExtension>()->removeObject(obj);
             
             if (!hasObject(obj)) {
@@ -158,7 +165,8 @@ std::vector<DocumentObject*> GeoFeatureGroupExtension::addObjects(std::vector<Ap
         }
     }
     
-    Group.setValues(grp);
+    if(Group.getSize() != (int)grp.size())
+        Group.setValues(grp);
     return ret;
 }
 
@@ -193,8 +201,9 @@ void GeoFeatureGroupExtension::extensionOnChanged(const Property* p) {
     //objects are only allowed in a single GeoFeatureGroup
     if(p == &Group && !Group.testStatus(Property::User3)) {
     
-        if(!getExtendedObject()->isRestoring() &&
-           !getExtendedObject()->getDocument()->isPerformingTransaction()) {
+        auto owner = getExtendedObject();
+        if(!owner->isRestoring() &&
+           !owner->getDocument()->isPerformingTransaction()) {
                 
             bool error = false;
             auto corrected = Group.getValues();
@@ -204,7 +213,7 @@ void GeoFeatureGroupExtension::extensionOnChanged(const Property* p) {
                 //would return anyone of it and hence it is possible that we miss an error. We need a custom check
                 auto list = obj->getInList();
                 for (auto in : list) {
-                    if(in == getExtendedObject())
+                    if(in == owner)
                         continue;
                     auto parent = in->getExtensionByType<GeoFeatureGroupExtension>(true);
                     if(parent && parent->hasObject(obj)) {
@@ -225,7 +234,6 @@ void GeoFeatureGroupExtension::extensionOnChanged(const Property* p) {
 
     App::GroupExtension::extensionOnChanged(p);
 }
-
 
 std::vector< DocumentObject* > GeoFeatureGroupExtension::getScopedObjectsFromLinks(const DocumentObject* obj, LinkScope scope) {
 
@@ -478,15 +486,6 @@ void GeoFeatureGroupExtension::getInvalidLinkObjects(const DocumentObject* obj, 
         }
     }
 }
-
-bool GeoFeatureGroupExtension::extensionGetSubObjects(std::vector<std::string> &ret, int) const {
-    for(auto obj : Group.getValues()) {
-        if(obj && obj->getNameInDocument() && !obj->testStatus(ObjectStatus::GeoExcluded))
-            ret.push_back(std::string(obj->getNameInDocument())+'.');
-    }
-    return true;
-}
-
 
 // Python feature ---------------------------------------------------------
 
