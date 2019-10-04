@@ -149,23 +149,34 @@ const char* DynamicProperty::getPropertyDocumentation(const char *name) const
 Property* DynamicProperty::addDynamicProperty(PropertyContainer &pc, const char* type, 
         const char* name, const char* group, const char* doc, short attr, bool ro, bool hidden)
 {
+    if(!type)
+        type = "<null>";
+    if(!name)
+        name = "<null>";
+
+    // We no longer auto rename new dynamic property any more, because it is
+    // very difficult for a program to find out and actual name of the property
+    // if it is renamed automatically, which will lead to harder to diagnos
+    // problems
+    if(pc.getPropertyByName(name))
+        FC_THROWM(Base::NameError, "Property " << pc.getFullName() << '.' << name << " already exists");
+
+    if(Base::Tools::getIdentifier(name) != name) 
+        FC_THROWM(Base::NameError, "Invalid property name '" << name << "'");
+
     Base::BaseClass* base = static_cast<Base::BaseClass*>(Base::Type::createInstanceByName(type,true));
-    if (!base)
-        return 0;
+    if (!base) 
+        FC_THROWM(Base::RuntimeError, "Failed to create property " 
+                << pc.getFullName() << '.' << name << " of type " << type);
     if (!base->getTypeId().isDerivedFrom(Property::getClassTypeId())) {
         delete base;
-        std::stringstream str;
-        str << "'" << type << "' is not a property type";
-        throw Base::ValueError(str.str());
+        FC_THROWM(Base::ValueError, "Invalid type " << type << " for property " << pc.getFullName() << '.' << name);
     }
 
     // get unique name
     Property* pcProperty = static_cast<Property*>(base);
-    if (!name || !name[0])
-        name = type;
 
-    auto res = props.get<0>().emplace(pcProperty,
-            getUniquePropertyName(pc,name), nullptr, group, doc, attr, ro, hidden);
+    auto res = props.get<0>().emplace(pcProperty,name, nullptr, group, doc, attr, ro, hidden);
 
     pcProperty->setContainer(&pc);
     pcProperty->myName = res.first->name.c_str();
