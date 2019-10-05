@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>445</width>
-    <height>637</height>
+    <height>665</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -158,9 +158,6 @@ it inside the Placement property.</string>
    </item>
    <item row="3" column="0">
     <widget class="QGroupBox" name="groupBoxHeader">
-     <property name="toolTip">
-      <string>If not empty, field contents will be used in the STEP file header.</string>
-     </property>
      <property name="title">
       <string>Header</string>
      </property>
@@ -207,8 +204,7 @@ it inside the Placement property.</string>
       <item>
        <widget class="Gui::PrefCheckBox" name="checkBoxMergeCompound">
         <property name="toolTip">
-         <string>If checked, no Compound merge will be done
-during file reading (slower but higher details).</string>
+         <string>If this is checked, no Compound merge will be done during file reading (slower but higher details).</string>
         </property>
         <property name="text">
          <string>Enable STEP Compound merge</string>
@@ -221,6 +217,22 @@ during file reading (slower but higher details).</string>
         </property>
         <property name="prefPath" stdset="0">
          <cstring>Mod/Import/hSTEP</cstring>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Gui::PrefCheckBox" name="checkBoxLegacyImporter">
+        <property name="toolTip">
+         <string>Use legacy STEP importer that does not support linked instance.</string>
+        </property>
+        <property name="text">
+         <string>Use legacy importer</string>
+        </property>
+        <property name="prefPath" stdset="0">
+         <string>Mod/Import</string>
+        </property>
+        <property name="prefEntry" stdset="0">
+         <string>UseLegacyImporter</string>
         </property>
        </widget>
       </item>
