@@ -25,6 +25,7 @@
 #ifndef _PreComp_
 # include <Inventor/nodes/SoSeparator.h>
 # include <Inventor/nodes/SoCoordinate3.h>
+# include <Precision.hxx>
 #endif
 
 #include <Mod/Part/Gui/SoBrepEdgeSet.h>
@@ -86,6 +87,8 @@ void ViewProviderDatumLine::setExtents (Base::BoundBox3d bbox) {
     bbox.Add ( Base::Vector3d (0, 0, 0) );
 
     double margin = bbox.LengthZ () * marginFactor ();
+    if(margin < Precision::Confusion())
+        margin = marginFactor();
 
     // Display the line
     pCoords->point.setNum (2);

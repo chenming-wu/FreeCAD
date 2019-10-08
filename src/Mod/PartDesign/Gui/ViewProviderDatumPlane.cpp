@@ -26,6 +26,7 @@
 #ifndef _PreComp_
 # include <Inventor/nodes/SoSeparator.h>
 # include <Inventor/nodes/SoCoordinate3.h>
+# include <Precision.hxx>
 #endif
 
 #include <Mod/Part/Gui/SoBrepFaceSet.h>
@@ -117,17 +118,23 @@ void ViewProviderDatumPlane::setExtents (Base::BoundBox3d bbox) {
     // Add origin of the plane to the box if it's not
     bbox.Add ( Base::Vector3d (0, 0, 0) );
 
-    double margin = sqrt(bbox.LengthX ()*bbox.LengthY ()) * marginFactor ();
+    double marginx = bbox.LengthX() * marginFactor();
+    if(marginx < Precision::Confusion())
+        marginx = marginFactor();
 
-    pcDatum->Length.setValue(bbox.LengthX() + 2*margin);
-    pcDatum->Width.setValue(bbox.LengthY() + 2*margin);
+    double marginy = bbox.LengthY() * marginFactor();
+    if(marginy < Precision::Confusion())
+        marginy = marginFactor();
+
+    pcDatum->Length.setValue(bbox.LengthX() + 2*marginx);
+    pcDatum->Width.setValue(bbox.LengthY() + 2*marginy);
 
     // Change the coordinates of the line
     pCoords->point.setNum (4);
-    pCoords->point.set1Value(0, bbox.MaxX + margin, bbox.MaxY + margin, 0 );
-    pCoords->point.set1Value(1, bbox.MinX - margin, bbox.MaxY + margin, 0 );
-    pCoords->point.set1Value(2, bbox.MinX - margin, bbox.MinY - margin, 0 );
-    pCoords->point.set1Value(3, bbox.MaxX + margin, bbox.MinY - margin, 0 );
+    pCoords->point.set1Value(0, bbox.MaxX + marginx, bbox.MaxY + marginy, 0 );
+    pCoords->point.set1Value(1, bbox.MinX - marginx, bbox.MaxY + marginy, 0 );
+    pCoords->point.set1Value(2, bbox.MinX - marginx, bbox.MinY - marginy, 0 );
+    pCoords->point.set1Value(3, bbox.MaxX + marginx, bbox.MinY - marginy, 0 );
 }
 
 void ViewProviderDatumPlane::setExtents(double l, double w)

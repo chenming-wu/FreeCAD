@@ -283,29 +283,7 @@ bool ViewProviderDatum::setEdit(int ModNum)
 
 bool ViewProviderDatum::doubleClicked(void)
 {
-    auto activeDoc = Gui::Application::Instance->activeDocument();
-    if(!activeDoc)
-        activeDoc = getDocument();
-    auto activeView = activeDoc->getActiveView();
-    if(!activeView) return false;
-
-    std::string Msg("Edit ");
-    Msg += this->pcObject->Label.getValue();
-    Gui::Command::openCommand(Msg.c_str());
-
-    Part::Datum* pcDatum = static_cast<Part::Datum*>(getObject());
-    PartDesign::Body* activeBody = activeView->getActiveObject<PartDesign::Body*>(PDBODYKEY);
-    auto datumBody = PartDesignGui::getBodyFor(pcDatum, false);
-
-    if (datumBody != NULL) {
-        if (datumBody != activeBody) {
-            Gui::Command::doCommand(Gui::Command::Gui,
-                    "Gui.ActiveDocument.ActiveView.setActiveObject('%s',%s)",
-                    PDBODYKEY, Gui::Command::getObjectCmd(datumBody).c_str());
-            activeBody = datumBody;
-        }
-    }
-    return PartDesignGui::setEdit(pcObject,activeBody);
+    return PartDesignGui::setEdit(pcObject);
 }
 
 void ViewProviderDatum::unsetEdit(int ModNum)
@@ -341,29 +319,29 @@ SbBox3f ViewProviderDatum::getRelevantBoundBox () const {
     if (body) {
         objs = body->getFullModel ();
     } else {
-        // Probe if we belongs to some group
-        App::DocumentObject* group =  App::DocumentObjectGroup::getGroupOfObject ( this->getObject () );
+        auto datum = Base::freecad_dynamic_cast<Part::Datum>(getObject());
+        if(datum)
+            objs = datum->Support.getValues();
 
-        if(group) {
-            auto* ext = group->getExtensionByType<App::GroupExtension>();
-            if(ext)
-                objs = ext->getObjects ();
-        } else {
-            // Fallback to whole document
-            objs = this->getObject ()->getDocument ()->getObjects ();
+        if(objs.empty()) {
+            // Probe if we belongs to some group
+            App::DocumentObject* group =  App::DocumentObjectGroup::getGroupOfObject ( this->getObject () );
+            if(!group)
+                group = App::GeoFeatureGroupExtension::getGroupOfObject(this->getObject());
+
+            if(group) {
+                auto* ext = group->getExtensionByType<App::GroupExtension>();
+                if(ext)
+                    objs = ext->getObjects ();
+            }
         }
     }
 
     Gui::View3DInventor* view = dynamic_cast<Gui::View3DInventor*>(this->getActiveView());
-    if(view){
+    if(objs.size() && view){
        Gui::View3DInventorViewer* viewer = view->getViewer();
        SoGetBoundingBoxAction bboxAction(viewer->getSoRenderManager()->getViewportRegion());
-       SbBox3f bbox = getRelevantBoundBox (bboxAction, objs);
-
-       if ( bbox.getVolume () < Precision::Confusion() ) {
-           bbox.extendBy ( defaultBoundBox () );
-       }
-       return bbox;
+       return getRelevantBoundBox (bboxAction, objs);
     } else {
        return defaultBoundBox();
     }
@@ -372,7 +350,7 @@ SbBox3f ViewProviderDatum::getRelevantBoundBox () const {
 SbBox3f ViewProviderDatum::getRelevantBoundBox (
         SoGetBoundingBoxAction &bboxAction, const std::vector <App::DocumentObject *> &objs )
 {
-    SbBox3f bbox = defaultBoundBox();
+    SbBox3f bbox;
 
     // Adds the bbox of given feature to the output
     for (auto obj :objs) {
