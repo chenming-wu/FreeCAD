@@ -1401,7 +1401,7 @@ void SelectionSingleton::setVisible(VisibleState vis) {
                 if(!vis)
                     updateSelection(false,sel.DocName.c_str(),sel.FeatName.c_str(), sel.SubName.c_str());
                 parent->setElementVisible(elementName.c_str(),vis?true:false);
-                if(vis)
+                if(vis && TreeParams::Instance()->UpdateSelectionVisual())
                     updateSelection(true,sel.DocName.c_str(),sel.FeatName.c_str(), sel.SubName.c_str());
                 continue;
             }
@@ -1423,7 +1423,8 @@ void SelectionSingleton::setVisible(VisibleState vis) {
 
             if(vis) {
                 vp->show();
-                updateSelection(vis,sel.DocName.c_str(),sel.FeatName.c_str(), sel.SubName.c_str());
+                if(TreeParams::Instance()->UpdateSelectionVisual())
+                    updateSelection(vis,sel.DocName.c_str(),sel.FeatName.c_str(), sel.SubName.c_str());
             } else {
                 updateSelection(vis,sel.DocName.c_str(),sel.FeatName.c_str(), sel.SubName.c_str());
                 vp->hide();
