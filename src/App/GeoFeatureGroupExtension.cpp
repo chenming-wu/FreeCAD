@@ -144,10 +144,13 @@ std::vector<DocumentObject*> GeoFeatureGroupExtension::addObjects(std::vector<Ap
     std::vector<DocumentObject*> ret;
 
     auto owner = getExtendedObject();
+
+    auto inSet = owner->getInListEx(true);
+    inSet.insert(owner);
     
     for(auto object : objects) {
         
-        if(!allowObject(object))
+        if(inSet.count(object) || !allowObject(object))
             continue;
         
         //cross CoordinateSystem links are not allowed, so we need to move the whole link group 
@@ -167,8 +170,10 @@ std::vector<DocumentObject*> GeoFeatureGroupExtension::addObjects(std::vector<Ap
         }
     }
     
-    if(Group.getSize() != (int)grp.size())
+    if(Group.getSize() != (int)grp.size()) {
+        Base::ObjectStatusLocker<Property::Status, Property> guard(Property::User3, &Group);
         Group.setValues(grp);
+    }
     return ret;
 }
 
@@ -192,8 +197,10 @@ std::vector<DocumentObject*> GeoFeatureGroupExtension::removeObjects(std::vector
         }
     }
     
-    if(!removed.empty())
+    if(!removed.empty()) {
+        Base::ObjectStatusLocker<Property::Status, Property> guard(Property::User3, &Group);
         Group.setValues(grp);
+    }
     
     return removed;
 }
@@ -204,12 +211,31 @@ void GeoFeatureGroupExtension::extensionOnChanged(const Property* p) {
     if(p == &Group && !Group.testStatus(Property::User3)) {
     
         auto owner = getExtendedObject();
-        if(!owner->isRestoring() &&
-           !owner->getDocument()->isPerformingTransaction()) {
-                
+        if(!owner->isRestoring() && !owner->getDocument()->isPerformingTransaction()) {
             bool error = false;
-            auto corrected = Group.getValues();
-            for(auto obj : Group.getValues()) {
+            auto children = Group.getValues();
+            std::unordered_map<App::DocumentObject*, bool> objMap;
+            for(auto it=children.begin(),itNext=it;it!=children.end();it=itNext) {
+                ++itNext;
+                auto obj = *it;
+                if(!obj || !obj->getNameInDocument() || !allowObject(obj)) {
+                    error = true;
+                    itNext = children.erase(it);
+                    if(obj)
+                        FC_WARN("Remove invalid member " << obj->getFullName() 
+                                <<  " from " << owner->getFullName());
+                    continue;
+                }
+                auto res = objMap.insert(std::make_pair(obj,true));
+                if(!res.second || !res.first->second) {
+                    error = true;
+                    itNext = children.erase(it);
+                    FC_WARN("Remove duplicated member " << obj->getFullName() 
+                            <<  " from " << owner->getFullName());
+                    continue;
+                }
+
+                bool &valid = res.first->second;
 
                 //we have already set the obj into the group, so in a case of multiple groups getGroupOfObject
                 //would return anyone of it and hence it is possible that we miss an error. We need a custom check
@@ -220,16 +246,50 @@ void GeoFeatureGroupExtension::extensionOnChanged(const Property* p) {
                     auto parent = in->getExtensionByType<GeoFeatureGroupExtension>(true);
                     if(parent && parent->hasObject(obj)) {
                         error = true;
-                        corrected.erase(std::remove(corrected.begin(), corrected.end(), obj), corrected.end());
+                        valid = false;
+                        itNext = children.erase(it);
+                        FC_WARN("Remove " << obj->getFullName() <<  " from " 
+                                << owner->getFullName() << " because of multiple owner groups");
+                        break;
                     }
                 }
             }
 
+            bool retry;
+            do {
+                retry = false;
+                for(auto it=children.begin();it!=children.end();++it) {
+                    auto obj = *it;
+                    auto &valid = objMap[obj];
+                    for(auto link : getCSRelevantLinks(obj)) {
+                        auto iter = objMap.find(link);
+                        if(iter == objMap.end() || !iter->second) {
+                            FC_WARN("Remove " << obj->getFullName() <<  " from " 
+                                    << owner->getFullName() << " because of cross coordinate link " 
+                                    << link->getFullName());
+                            children.erase(it);
+                            valid = false;
+                            retry = true;
+                            error = true;
+                            break;
+                        }
+                    }
+                    if(retry)
+                        break;
+                }
+            }while(retry);
+
+
             //if an error was found we need to correct the values and inform the user
             if(error) {
                 Base::ObjectStatusLocker<Property::Status, Property> guard(Property::User3, &Group);
-                Group.setValues(corrected);
-                throw Base::RuntimeError("Object can only be in a single GeoFeatureGroup");
+                Group.setValues(children);
+
+                // Since we are auto correcting, just issue a warning
+                //
+                // throw Base::RuntimeError("Object can only be in a single GeoFeatureGroup");
+                //
+                FC_WARN("Auto correct group member for " << owner->getFullName());
             }
         }
     }
@@ -273,6 +333,28 @@ std::vector< DocumentObject* > GeoFeatureGroupExtension::getScopedObjectsFromLin
     //it is important to remove all nullptrs
     // result.erase(std::remove(result.begin(), result.end(), nullptr), result.end());
     return result;
+}
+
+void GeoFeatureGroupExtension::filterLinksByScope(
+        const App::DocumentObject *obj, std::vector<App::DocumentObject *> &children, LinkScope scope)
+{
+    if(!obj || !obj->getNameInDocument())
+        return;
+
+    std::vector<App::Property*> list;
+    obj->getPropertyList(list);
+    std::set<App::DocumentObject *> links;
+    for(auto prop : list) {
+        auto link = Base::freecad_dynamic_cast<PropertyLinkBase>(prop);
+        if(link && link->getScope()==scope)
+            link->getLinkedObjects(std::inserter(links,links.end()));
+    }
+    for(auto it=children.begin();it!=children.end();) {
+        if(!links.count(*it))
+            it = children.erase(it);
+        else
+            ++it;
+    }
 }
 
 void GeoFeatureGroupExtension::getCSOutList(const App::DocumentObject* obj,

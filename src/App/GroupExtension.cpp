@@ -111,16 +111,17 @@ std::vector<DocumentObject*> GroupExtension::addObject(DocumentObject* obj)
 
 std::vector< DocumentObject* > GroupExtension::addObjects(std::vector< DocumentObject* > objs) {
     
+    auto owner = getExtendedObject();
+    auto inSet = owner->getInListEx(true);
+    inSet.insert(owner);
+
     std::vector<DocumentObject*> added;
     std::vector<DocumentObject*> grp = Group.getValues();
     for(auto obj : objs) {
             
-        if(!allowObject(obj))
+        if(inSet.count(obj) || !allowObject(obj) || hasObject(obj))
             continue;
         
-        if (hasObject(obj))
-            continue;
-            
         //only one group per object. Note that it is allowed to be in a group and geofeaturegroup. However,
         //getGroupOfObject() returns only normal groups, no GeoFeatureGroups. Hence this works.
         auto *group = App::GroupExtension::getGroupOfObject(obj);
@@ -142,6 +143,7 @@ std::vector< DocumentObject* > GroupExtension::addObjects(std::vector< DocumentO
         added.push_back(obj);
     }
     
+    Base::ObjectStatusLocker<Property::Status, Property> guard(Property::User3, &Group);
     Group.setValues(grp);
     
     return added;
@@ -176,6 +178,7 @@ std::vector< DocumentObject* > GroupExtension::removeObjects(std::vector< Docume
     
     newGrp.erase(end, newGrp.end());
     if (grp.size() != newGrp.size()) {
+        Base::ObjectStatusLocker<Property::Status, Property> guard(Property::User3, &Group);
         Group.setValues (newGrp);
     }
     
@@ -353,26 +356,37 @@ PyObject* GroupExtension::getExtensionPyObject(void) {
 
 void GroupExtension::extensionOnChanged(const Property* p) {
 
+    auto owner = getExtendedObject();
+
     //objects are only allowed in a single group. Note that this check must only be done for normal
     //groups, not any derived classes
     if((this->getExtensionTypeId() == GroupExtension::getExtensionClassTypeId())
         && p == &Group && !Group.testStatus(Property::User3)) 
     {
-        if(!getExtendedObject()->isRestoring() &&
-           !getExtendedObject()->getDocument()->isPerformingTransaction()) {
+        if(!owner->isRestoring() && !owner->getDocument()->isPerformingTransaction()) {
             
             bool error = false;
-            auto corrected = Group.getValues();
-            for(auto obj : Group.getValues()) {
+            auto children = Group.getValues();
+            std::unordered_set<App::DocumentObject*> objSet;
+            for(auto it=children.begin(),itNext=it;it!=children.end();it=itNext) {
+                itNext++;
+                auto obj = *it;
+                if(!obj || !obj->getNameInDocument() || !objSet.insert(obj).second) {
+                    error = true;
+                    itNext = children.erase(it);
+                    continue;
+                }
 
                 //we have already set the obj into the group, so in a case of multiple groups getGroupOfObject
                 //would return anyone of it and hence it is possible that we miss an error. We need a custom check
                 auto list = obj->getInList();
                 for (auto in : list) {
-                    if(in->hasExtension(App::GroupExtension::getExtensionClassTypeId(), false) &&
-                        in != getExtendedObject()) {
+                    if(in!=owner && in->hasExtension(App::GroupExtension::getExtensionClassTypeId(), false)) {
                         error = true;
-                        corrected.erase(std::remove(corrected.begin(), corrected.end(), obj), corrected.end());
+                        itNext = children.erase(it);
+                        FC_WARN("Remove " << obj->getFullName() <<  " from " 
+                                << owner->getFullName() << " because of multiple owner groups");
+                        break;
                     }
                 }
             }
@@ -380,13 +394,17 @@ void GroupExtension::extensionOnChanged(const Property* p) {
             //if an error was found we need to correct the values and inform the user
             if(error) {
                 Base::ObjectStatusLocker<Property::Status, Property> guard(Property::User3, &Group);
-                Group.setValues(corrected);
-                throw Base::RuntimeError("Object can only be in a single Group");
+                Group.setValues(children);
+
+                // Since we are auto correcting, just issue a warning
+                //
+                // throw Base::RuntimeError("Object can only be in a single Group");
+                FC_WARN("Auto correct group member for " << owner->getFullName());
             }
         }
     }
 
-    if((p == &getClaimedGroupProperty() && !p->testStatus(Property::User3)) || p == &ExportMode) {
+    if(p == &getClaimedGroupProperty() || p == &ExportMode) {
         _Conns.clear();
         int mode = ExportMode.getValue();
         if(mode != EXPORT_DISABLED) {
