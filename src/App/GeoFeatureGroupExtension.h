@@ -112,10 +112,10 @@ public:
     static std::vector<App::DocumentObject*> getCSRelevantLinks(const App::DocumentObject* obj);
     /// Checks if the links of the given object comply with all GeoFeatureGroup requirements, that means
     /// if normal links are only within the parent GeoFeatureGroup. 
-    static bool areLinksValid(const App::DocumentObject* obj);
+    static bool areLinksValid(const App::DocumentObject* obj, bool silent=true);
     /// Checks if the given link complies with all GeoFeatureGroup requirements, that means
     /// if normal links are only within the parent GeoFeatureGroup. 
-    static bool isLinkValid(App::Property* link);
+    static bool isLinkValid(App::Property* link, bool silent=true);
     //Returns all objects that are wrongly linked from this object, meaning which are out of scope of the 
     //links of obj
     static void getInvalidLinkObjects(const App::DocumentObject* obj, std::vector<App::DocumentObject*>& vec);

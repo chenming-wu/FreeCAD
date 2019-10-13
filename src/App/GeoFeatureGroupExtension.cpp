@@ -38,6 +38,8 @@
 //#include "GeoFeatureGroupPy.h"
 //#include "FeaturePythonPyImp.h"
 
+FC_LOG_LEVEL_INIT("App",true,true);
+
 using namespace App;
 
 
@@ -413,18 +415,16 @@ bool GeoFeatureGroupExtension::extensionGetSubObject(DocumentObject *&ret, const
     return true;
 }
 
-bool GeoFeatureGroupExtension::areLinksValid(const DocumentObject* obj) {
+bool GeoFeatureGroupExtension::areLinksValid(const DocumentObject* obj, bool silent) {
 
     if(!obj)
         return true;
 
     //no cross CS link for local links.
-    //Base::Console().Message("Check object links: %s\n", obj->getNameInDocument());
     std::vector<App::Property*> list;
     obj->getPropertyList(list);
     for(App::Property* prop : list) {
-        if(!isLinkValid(prop)) {
-            //Base::Console().Message("Invalid link: %s\n", prop->getName());
+        if(!isLinkValid(prop, silent)) {
             return false;
         }
     }
@@ -432,7 +432,7 @@ bool GeoFeatureGroupExtension::areLinksValid(const DocumentObject* obj) {
     return true;
 }
 
-bool GeoFeatureGroupExtension::isLinkValid(App::Property* prop) {
+bool GeoFeatureGroupExtension::isLinkValid(App::Property* prop, bool silent) {
 
     if(!prop)
         return true;
@@ -444,10 +444,21 @@ bool GeoFeatureGroupExtension::isLinkValid(App::Property* prop) {
 
     //no cross CS link for local links.
     auto result = getScopedObjectsFromLink(prop, LinkScope::Local);
-    auto group = getGroupOfObject(obj);
-    for(auto link : result) {
-        if(getGroupOfObject(link) != group) 
-            return false;
+    if(result.size()) {
+        auto group = getGroupOfObject(obj);
+        for(auto link : result) {
+            auto grp = getGroupOfObject(link);
+            if(grp != group) {
+                if(!silent) {
+                    FC_WARN(prop->getFullName() << "(links to "
+                            << link->getFullName() << ") is out of scope:"
+                            << (grp?grp->getFullName().c_str():"<global>")
+                            << " vs. "
+                            << (group?group->getFullName().c_str():"<global>"));
+                }
+                return false;
+            }
+        }
     }
 
     //for links with scope SubGroup we need to check if all features are part of subgroups
@@ -455,8 +466,13 @@ bool GeoFeatureGroupExtension::isLinkValid(App::Property* prop) {
         result = getScopedObjectsFromLink(prop, LinkScope::Child);
         auto groupExt = obj->getExtensionByType<App::GeoFeatureGroupExtension>();
         for(auto link : result) {
-            if(!groupExt->hasObject(link, true)) 
+            if(!groupExt->hasObject(link, true)) {
+                if(!silent) {
+                    FC_WARN(link->getFullName() << " is out of scope of group "
+                            << obj->getFullName());
+                }
                 return false;
+            }
         }
     }
 
