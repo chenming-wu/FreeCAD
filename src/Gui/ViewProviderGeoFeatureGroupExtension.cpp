@@ -53,21 +53,25 @@ ViewProviderGeoFeatureGroupExtension::~ViewProviderGeoFeatureGroupExtension()
     pcGroupChildren = 0;
 }
 
-
-std::vector<App::DocumentObject*> ViewProviderGeoFeatureGroupExtension::extensionClaimChildren3D(void) const {
+void ViewProviderGeoFeatureGroupExtension::extensionClaimChildren3D(
+        std::vector<App::DocumentObject*> &children) const 
+{
 
     //all object in the group must be claimed in 3D, as we are a coordinate system for all of them
     auto* ext = getExtendedViewProvider()->getObject()->getExtensionByType<App::GeoFeatureGroupExtension>();
     if (ext) {
-        auto objs = ext->Group.getValues();
-        return objs;
+        const auto &objs = ext->Group.getValues();
+        children.insert(children.end(),objs.begin(),objs.end());
     }
-    return std::vector<App::DocumentObject*>();
 }
 
-std::vector<App::DocumentObject*> ViewProviderGeoFeatureGroupExtension::extensionClaimChildren(void) const {
+void ViewProviderGeoFeatureGroupExtension::extensionClaimChildren(
+        std::vector<App::DocumentObject *> &children) const 
+{
+    buildClaimedChildren();
     auto* group = getExtendedViewProvider()->getObject()->getExtensionByType<App::GeoFeatureGroupExtension>();
-    return group->_ClaimedChildren.getValue();
+    const auto &objs = group->_ClaimedChildren.getValues();
+    children.insert(children.end(),objs.begin(),objs.end());
 }
 
 void ViewProviderGeoFeatureGroupExtension::extensionAttach(App::DocumentObject* pcObject)
@@ -84,55 +88,70 @@ void ViewProviderGeoFeatureGroupExtension::extensionSetDisplayMode(const char* M
     ViewProviderGroupExtension::extensionSetDisplayMode( ModeName );
 }
 
-std::vector<std::string> ViewProviderGeoFeatureGroupExtension::extensionGetDisplayModes(void) const
+void ViewProviderGeoFeatureGroupExtension::extensionGetDisplayModes(std::vector<std::string> &StrList) const
 {
     // get the modes of the father
-    std::vector<std::string> StrList = ViewProviderGroupExtension::extensionGetDisplayModes();
+    ViewProviderGroupExtension::extensionGetDisplayModes(StrList);
 
     // add your own modes
     StrList.push_back("Group");
-
-    return StrList;
 }
 
 void ViewProviderGeoFeatureGroupExtension::extensionUpdateData(const App::Property* prop)
 {
     auto group = getExtendedViewProvider()->getObject()->getExtensionByType<App::GeoFeatureGroupExtension>();
-    if(!group) {
-
-    } else if (prop == &group->Group) {
-
-        if(!prop->testStatus(App::Property::User3)) {
-
-            const std::vector<App::DocumentObject*> &model = group->Group.getValues ();
-            std::set<App::DocumentObject*> outSet; //< set of objects not to claim (childrens of childrens)
-
-            // search for objects handled (claimed) by the features
-            for (auto obj: model) {
-                //stuff in another geofeaturegroup is not in the model anyway
-                if (!obj || obj->hasExtension(App::GeoFeatureGroupExtension::getExtensionClassTypeId())) { continue; }
-
-                Gui::ViewProvider* vp = Gui::Application::Instance->getViewProvider ( obj );
-                if (!vp || vp == getExtendedViewProvider()) { continue; }
-
-                auto children = vp->claimChildren();
-                std::remove_copy ( children.begin (), children.end (), std::inserter (outSet, outSet.begin () ), nullptr);
+    if(group) {
+        if (prop == &group->Group) {
+            buildClaimedChildren();
+            plainGroupConns.clear();
+            if(linkView) {
+                for(auto obj : group->Group.getValues()) {
+                    // check for plain group
+                    if(!obj || !obj->getNameInDocument() 
+                            || !obj->hasExtension(App::GroupExtension::getExtensionClassTypeId(),false))
+                        continue;
+                    plainGroupConns.push_back(obj->signalChanged.connect(boost::bind(
+                                    &ViewProviderGeoFeatureGroupExtension::slotPlainGroupChanged,this,_1,_2)));
+                }
             }
-
-            // remove the otherwise handled objects, preserving their order so the order in the TreeWidget is correct
-            std::vector<App::DocumentObject*> Result;
-            for(auto obj : model) {
-                if(!obj || !obj->getNameInDocument())
-                    continue;
-                if(!outSet.count(obj)) 
-                    Result.push_back(obj);
-            }
-            group->_ClaimedChildren.setValues(Result);
-        }
-    } else if(prop == &group->placement()) 
-        getExtendedViewProvider()->setTransformation ( group->placement().getValue().toMatrix() );
+        } else if(prop == &group->placement()) 
+            getExtendedViewProvider()->setTransformation ( group->placement().getValue().toMatrix() );
+    }
 
     ViewProviderGroupExtension::extensionUpdateData ( prop );
+}
+
+void ViewProviderGeoFeatureGroupExtension::buildClaimedChildren() const {
+    auto* group = getExtendedViewProvider()->getObject()->getExtensionByType<App::GeoFeatureGroupExtension>();
+    if(!group)
+        return;
+
+    auto model = group->Group.getValues ();
+    std::set<App::DocumentObject*> outSet; //< set of objects not to claim (childrens of childrens)
+
+    // search for objects handled (claimed) by the features
+    for (auto obj: model) {
+        //stuff in another geofeaturegroup is not in the model anyway
+        if (!obj || obj->hasExtension(App::GeoFeatureGroupExtension::getExtensionClassTypeId())) { continue; }
+
+        Gui::ViewProvider* vp = Gui::Application::Instance->getViewProvider ( obj );
+        if (!vp || vp == getExtendedViewProvider()) { continue; }
+
+        auto children = vp->claimChildren();
+        group->filterLinksByScope(obj,children);
+        outSet.insert(children.begin(),children.end());
+    }
+
+    // remove the otherwise handled objects, preserving their order so the order in the TreeWidget is correct
+    for(auto it=model.begin();it!=model.end();) {
+        auto obj = *it;
+        if(!obj || !obj->getNameInDocument() || outSet.count(obj))
+            it = model.erase(it);
+        else
+            ++it;
+    }
+    if(model != group->_ClaimedChildren.getValues())
+        group->_ClaimedChildren.setValues(model);
 }
 
 namespace Gui {
