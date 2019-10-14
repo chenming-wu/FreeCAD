@@ -2368,7 +2368,7 @@ bool ViewProviderLink::getElementPicked(const SoPickedPoint *pp, std::string &su
     bool ret = linkView->linkGetElementPicked(pp,subname);
     if(!ret)
         return ret;
-    if(isGroup(ext)) {
+    if(isGroup(ext,true)) {
         const char *sub = 0;
         int idx = App::LinkBaseExtension::getArrayIndex(subname.c_str(),&sub);
         if(idx>=0 ) {
