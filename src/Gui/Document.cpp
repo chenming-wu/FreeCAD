@@ -2140,6 +2140,8 @@ void Document::undo(int iSteps)
     if(!checkTransactionID(true,iSteps))
         return;
 
+    Gui::Selection().clearCompleteSelection();
+
     for (int i=0;i<iSteps;i++) {
         getDocument()->undo();
     }
@@ -2153,6 +2155,8 @@ void Document::redo(int iSteps)
 
     if(!checkTransactionID(false,iSteps))
         return;
+
+    Gui::Selection().clearCompleteSelection();
 
     for (int i=0;i<iSteps;i++) {
         getDocument()->redo();
