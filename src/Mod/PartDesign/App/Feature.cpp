@@ -140,10 +140,12 @@ Part::Feature* Feature::getBaseObject(bool silent) const {
 const TopoDS_Shape& Feature::getBaseShape() const {
     const Part::Feature* BaseObject = getBaseObject();
 
-    if (BaseObject->isDerivedFrom(PartDesign::ShapeBinder::getClassTypeId())||
-        BaseObject->isDerivedFrom(PartDesign::SubShapeBinder::getClassTypeId()))
-    {
-        throw Base::ValueError("Base shape of shape binder cannot be used");
+    if(BaseObject != BaseFeature.getValue()) {
+        if (BaseObject->isDerivedFrom(PartDesign::ShapeBinder::getClassTypeId())||
+            BaseObject->isDerivedFrom(PartDesign::SubShapeBinder::getClassTypeId()))
+        {
+            throw Base::ValueError("Base shape of shape binder cannot be used");
+        }
     }
 
     const TopoDS_Shape& result = BaseObject->Shape.getValue();
@@ -159,8 +161,12 @@ const TopoDS_Shape& Feature::getBaseShape() const {
 const Part::TopoShape Feature::getBaseTopoShape() const {
     const Part::Feature* BaseObject = getBaseObject();
 
-    if (BaseObject->isDerivedFrom(PartDesign::ShapeBinder::getClassTypeId())) {
-        throw Base::ValueError("Base shape of shape binder cannot be used");
+    if(BaseObject != BaseFeature.getValue()) {
+        if (BaseObject->isDerivedFrom(PartDesign::ShapeBinder::getClassTypeId()) ||
+            BaseObject->isDerivedFrom(PartDesign::SubShapeBinder::getClassTypeId()))
+        {
+            throw Base::ValueError("Base shape of shape binder cannot be used");
+        }
     }
 
     const Part::TopoShape& result = BaseObject->Shape.getShape();

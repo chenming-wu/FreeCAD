@@ -71,6 +71,7 @@ public:
     virtual bool doubleClicked() override;
     virtual void setupContextMenu(QMenu* menu, QObject* receiver, const char* member) override;
     virtual bool setEdit(int ModNum) override;
+    virtual void attach(App::DocumentObject *pcObject) override;
 
 private:
     void updatePlacement(bool transaction);

@@ -32,6 +32,8 @@
 # include <TopTools_IndexedMapOfShape.hxx>
 #endif
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include <Base/Console.h>
 #include <Gui/Application.h>
 #include <Gui/Control.h>
@@ -199,19 +201,27 @@ PROPERTY_SOURCE(PartDesignGui::ViewProviderSubShapeBinder,PartGui::ViewProviderP
 
 ViewProviderSubShapeBinder::ViewProviderSubShapeBinder() {
     sPixmap = "PartDesign_SubShapeBinder.svg";
+}
 
-    //get the datum coloring scheme
-    // set default color for datums (golden yellow with 60% transparency)
-    ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath (
-            "User parameter:BaseApp/Preferences/Mod/PartDesign");
-    unsigned long shcol = hGrp->GetUnsigned ( "DefaultDatumColor", 0xFFD70099 );
-    App::Color col ( (uint32_t) shcol );
-    
-    ShapeColor.setValue(col);
-    LineColor.setValue(col);
-    PointColor.setValue(col);
-    Transparency.setValue(60);
-    LineWidth.setValue(1);
+void ViewProviderSubShapeBinder::attach(App::DocumentObject *obj) {
+
+    if(!boost::starts_with(obj->getNameInDocument(),"BaseFeature")
+            && !boost::starts_with(obj->getNameInDocument(), "Reference"))
+    {
+        //get the datum coloring scheme
+        // set default color for datums (golden yellow with 60% transparency)
+        ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath (
+                "User parameter:BaseApp/Preferences/Mod/PartDesign");
+        unsigned long shcol = hGrp->GetUnsigned ( "DefaultDatumColor", 0xFFD70099 );
+        App::Color col ( (uint32_t) shcol );
+        
+        ShapeColor.setValue(col);
+        LineColor.setValue(col);
+        PointColor.setValue(col);
+        Transparency.setValue(60);
+        LineWidth.setValue(1);
+    }
+    ViewProviderPart::attach(obj);
 }
 
 bool ViewProviderSubShapeBinder::canDropObjectEx(App::DocumentObject *, 
