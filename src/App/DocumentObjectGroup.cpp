@@ -56,6 +56,9 @@ PyObject *DocumentObjectGroup::getPyObject()
     return Py::new_reference_to(PythonObject);
 }
 
+void DocumentObjectGroup::setupObject() {
+    addDynamicProperty("App::PropertyMap", "HiddenChildren", "Group",0,Prop_Output,true,true);
+}
 
 // Python feature ---------------------------------------------------------
 

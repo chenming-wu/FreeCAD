@@ -404,16 +404,12 @@ void GroupExtension::extensionOnChanged(const Property* p) {
 
     if(p == &getClaimedGroupProperty() || p == &ExportMode) {
         _Conns.clear();
-        int mode = ExportMode.getValue();
-        if(mode != EXPORT_DISABLED) {
-            for(auto obj : getClaimedGroupProperty().getValues()) {
-                if(!obj || !obj->getNameInDocument())
-                    continue;
-                queryChildExport(obj);
-                if(mode != EXPORT_BY_CHILD_QUERY)
-                    _Conns[obj] = obj->signalChanged.connect(boost::bind(
-                                    &GroupExtension::slotChildChanged,this,_1,_2));
-            }
+        for(auto obj : getClaimedGroupProperty().getValues()) {
+            if(!obj || !obj->getNameInDocument())
+                continue;
+            queryChildExport(obj);
+            _Conns[obj] = obj->signalChanged.connect(boost::bind(
+                            &GroupExtension::slotChildChanged,this,_1,_2));
         }
     } else if(p == &owner->Visibility) {
         if(!_togglingVisibility 
@@ -423,12 +419,25 @@ void GroupExtension::extensionOnChanged(const Property* p) {
             bool touched = false;
             bool vis = owner->Visibility.getValue();
             Base::FlagToggler<> guard(_togglingVisibility);
+
+            auto hiddenChildren = Base::freecad_dynamic_cast<PropertyMap>(owner->getPropertyByName("HiddenChildren"));
+            std::map<std::string,std::string> hc;
+
             for(auto obj : Group.getValues()) {
-                if(obj && obj->getNameInDocument() && obj->Visibility.getValue()!=vis) {
+                if(!obj || !obj->getNameInDocument())
+                    continue;
+                if(obj->Visibility.getValue()!=vis) {
+                    if(vis && hiddenChildren && hiddenChildren->getValue(obj->getNameInDocument()))
+                        continue;
                     touched = true;
                     obj->Visibility.setValue(vis);
-                }
+                } else if (!vis && hiddenChildren)
+                    hc.emplace(obj->getNameInDocument(),"");
             }
+
+            if(!owner->Visibility.getValue() && hiddenChildren)
+                hiddenChildren->setValues(std::move(hc));
+
             if(touched) {
                 Base::ObjectStatusLocker<Property::Status, Property> guard(Property::Output, &_GroupTouched);
                 // Temporary set the Property::Output on _GroupTouched, so that
@@ -443,8 +452,25 @@ void GroupExtension::extensionOnChanged(const Property* p) {
 }
 
 void GroupExtension::slotChildChanged(const DocumentObject &obj, const Property &prop) {
-    if(&prop == &obj.Visibility && !_togglingVisibility)
-        _GroupTouched.touch();
+    if(&prop == &obj.Visibility 
+            && !_togglingVisibility
+            && !obj.isRestoring() 
+            && !obj.getDocument()->isPerformingTransaction())
+    {
+        if(ExportMode.getValue() == EXPORT_BY_VISIBILITY)
+            _GroupTouched.touch();
+
+        auto owner = getExtendedObject();
+        auto hiddenChildren = Base::freecad_dynamic_cast<PropertyMap>(owner->getPropertyByName("HiddenChildren"));
+        if(hiddenChildren) {
+            std::map<std::string,std::string> hc;
+            for(auto obj : Group.getValues()) {
+                if(obj && obj->getNameInDocument() && !obj->Visibility.getValue())
+                    hc.emplace(obj->getNameInDocument(),"");
+            }
+            hiddenChildren->setValues(std::move(hc));
+        }
+    }
 }
 
 bool GroupExtension::extensionGetSubObject(DocumentObject *&ret, const char *subname,
