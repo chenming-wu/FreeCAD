@@ -157,9 +157,15 @@ void ViewProviderGeoFeatureGroupExtension::extensionUpdateData(const App::Proper
             if(linkView) {
                 for(auto obj : group->Group.getValues()) {
                     // check for plain group
-                    if(!obj || !obj->getNameInDocument() 
-                            || !obj->hasExtension(App::GroupExtension::getExtensionClassTypeId(),false))
+                    if(!obj || !obj->getNameInDocument())
                         continue;
+                    auto ext = obj->getExtensionByType<App::GroupExtension>(true,false);
+                    if(!ext)
+                        continue;
+                    if(linkView) {
+                        // To inform GroupExtension to disable toggling children visibility
+                        ext->checkParentGroup();
+                    }
                     plainGroupConns.push_back(obj->signalChanged.connect(boost::bind(
                                     &ViewProviderGeoFeatureGroupExtension::slotPlainGroupChanged,this,_1,_2)));
                 }

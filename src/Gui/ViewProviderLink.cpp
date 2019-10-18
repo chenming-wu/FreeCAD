@@ -837,6 +837,7 @@ public:
     CoinPtr<SoTransform> pcTransform;
     int groupIndex = -1;
     bool isGroup = false;
+    boost::signals2::scoped_connection groupConn;
 
     friend LinkView;
 
@@ -866,11 +867,11 @@ public:
         return pcRoot;
     }
 
-    void appendToPath(SoPath *path, const char *subname=0) {
+    void appendToPath(SoPath *path) {
         if(pcSwitch) {
             appendPath(path,pcSwitch);
             appendPath(path,pcRoot);
-        } else if (pcRoot && (isGroup || (subname && !subname[0])))
+        } else if (pcRoot && isGroup)
             appendPath(path,pcRoot);
     }
 
@@ -885,6 +886,7 @@ public:
         else
             pcRoot.reset();
         isGroup = false;
+        groupConn.disconnect();
     }
 
     void link(App::DocumentObject *obj) {
@@ -908,12 +910,39 @@ public:
                 pcRoot->addChild(linkInfo->getSnapshot(handle.childType));
             pcRoot->setName(obj->getFullName().c_str());
         } else {
-            pcSwitch.reset();
-            if(isGroup) {
+            if(!isGroup) {
+                pcSwitch.reset();
+                pcRoot = linkInfo->pcLinked->getRoot();
+            } else {
+                // When direct linking plain group (i.e. childType ==
+                // LinkView::SnapshotMax), We do not use its root node, because
+                // it does not group the children under it. Instead we create a
+                // new node for holding its children, and a new switch node to
+                // sync its visibility. Note that, in order to conform to the
+                // same tree structure as other childType, the new root node is
+                // grouped under the switch node, not the other way round like
+                // view provider.
+
                 pcRoot = new SoFCSelectionRoot(true);
                 pcRoot->setName(obj->getFullName().c_str());
-            } else
-                pcRoot = linkInfo->pcLinked->getRoot();
+
+                if(!pcSwitch) {
+                    pcRoot = new SoFCSelectionRoot(true);
+                    pcSwitch = new SoFCSwitch;
+                    pcSwitch->addChild(pcRoot);
+                    pcSwitch->whichChild = 0;
+                }
+                coinRemoveAllChildren(pcSwitch);
+                pcSwitch->addChild(pcRoot);
+
+                groupConn = linkInfo->pcLinked->getObject()->Visibility.signalChanged.connect(
+                    [this](const App::Property &prop) {
+                        int val = static_cast<const App::PropertyBool&>(prop).getValue()?0:-1;
+                        if(this->pcSwitch && this->pcSwitch->whichChild.getValue()!=val)
+                            this->pcSwitch->whichChild = val;
+                    }
+                );
+            }
         }
     }
 
@@ -1624,9 +1653,9 @@ bool LinkView::linkGetDetailPath(const char *subname, SoFullPath *path, SoDetail
         if(info.groupIndex>=0 && !getGroupHierarchy(info.groupIndex,path))
             return false;
 
-        info.appendToPath(path,subname);
+        info.appendToPath(path);
 
-        if(*subname == 0) 
+        if(info.isGroup && *subname == 0) 
             return true;
 
         if(info.isLinked()) {

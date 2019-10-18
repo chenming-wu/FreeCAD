@@ -67,6 +67,10 @@ GroupExtension::~GroupExtension()
 {
 }
 
+void GroupExtension::checkParentGroup() {
+    _checkParentGroup = true;
+}
+
 bool GroupExtension::queryChildExport(App::DocumentObject *obj) const {
     if(!obj || !obj->getNameInDocument())
         return false;
@@ -418,9 +422,18 @@ void GroupExtension::extensionOnChanged(const Property* p) {
         {
             bool touched = false;
             bool vis = owner->Visibility.getValue();
+
+            // _checkParentGroup is used by GeoFeatureExtensionGroup (actually
+            // its view provider) to inform us that we should not toggle
+            // children visibility here.
+            _checkParentGroup = _checkParentGroup 
+                && GeoFeatureGroupExtension::getGroupOfObject(owner);
+
+            auto hiddenChildren = Base::freecad_dynamic_cast<PropertyMap>(
+                    owner->getPropertyByName("HiddenChildren"));
+
             Base::FlagToggler<> guard(_togglingVisibility);
 
-            auto hiddenChildren = Base::freecad_dynamic_cast<PropertyMap>(owner->getPropertyByName("HiddenChildren"));
             std::map<std::string,std::string> hc;
 
             for(auto obj : Group.getValues()) {
@@ -429,13 +442,15 @@ void GroupExtension::extensionOnChanged(const Property* p) {
                 if(obj->Visibility.getValue()!=vis) {
                     if(vis && hiddenChildren && hiddenChildren->getValue(obj->getNameInDocument()))
                         continue;
-                    touched = true;
-                    obj->Visibility.setValue(vis);
-                } else if (!vis && hiddenChildren)
+                    if(!_checkParentGroup) {
+                        touched = true;
+                        obj->Visibility.setValue(vis);
+                    }
+                } if (!vis && hiddenChildren)
                     hc.emplace(obj->getNameInDocument(),"");
             }
 
-            if(!owner->Visibility.getValue() && hiddenChildren)
+            if(!vis && hiddenChildren)
                 hiddenChildren->setValues(std::move(hc));
 
             if(touched) {
