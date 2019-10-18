@@ -35,6 +35,7 @@
 #include <list>
 #include <unordered_set>
 #include <unordered_map>
+#include <functional>
 
 class SoFullPath;
 class SoPickedPoint;
@@ -158,6 +159,45 @@ protected:
     SoDetail *det;
 };
 
+
+/// Switch node that support global visibility override
+class GuiExport SoFCSwitch : public SoSwitch {
+    typedef SoSwitch inherited;
+    SO_NODE_HEADER(Gui::SoFCSwitch);
+
+public:
+    /// Stores the child index used in switching override mode, negative value to disable
+    SoSFInt32 defaultChild;
+
+    static void initClass(void);
+    static void finish(void);
+
+    SoFCSwitch();
+
+    virtual void doAction(SoAction *action);
+    virtual void getBoundingBox(SoGetBoundingBoxAction * action);
+    virtual void search(SoSearchAction * action);
+    virtual void callback(SoCallbackAction *action);
+    virtual void pick(SoPickAction *action);
+    virtual void handleEvent(SoHandleEventAction *action);
+
+    /// Enables switching override for the give action
+    static void switchDefault(SoAction *action, bool enable=true);
+
+    /** Register a callback when handling GetBoundingBoxAction in switch override mode
+     *
+     * It is useful for some view provider that delays visual update until visible
+     */
+    template<class F>
+    void setBBoxCallback(F f) {
+        cb = f;
+    }
+private:
+    std::function<void(void)> cb;
+};
+
+
+/// Separator node that tracks render caching setting
 class GuiExport SoFCSeparator : public SoSeparator {
     typedef SoSeparator inherited;
 
@@ -321,6 +361,7 @@ public:
         Full, Box, PassThrough
     };
     SoSFEnum selectionStyle;
+    SoSFBool overrideSwitch;
 
     static bool renderBBox(SoGLRenderAction *action, SoNode *node, SbColor color);
 

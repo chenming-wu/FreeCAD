@@ -186,8 +186,14 @@ public:
     /// Find the start of an element name in a subname
     static const char *findElementName(const char *subname);
 
+    /// Return the element name portion of the subname without mapping prefix
     static inline const char *hasMappedElementName(const char *subname) {
         return isMappedElement(findElementName(subname));
+    }
+
+    /// Check if the given subname only contains an element name
+    static bool isElementName(const char *subname) {
+        return subname && subname[0] && findElementName(subname)==subname;
     }
     //@}
 

@@ -325,6 +325,13 @@ ViewProviderPartExt::ViewProviderPartExt()
 
     sPixmap = "Tree_Part";
     loadParameter();
+
+    if(pcModeSwitch->isOfType(Gui::SoFCSwitch::getClassTypeId())) {
+        static_cast<Gui::SoFCSwitch*>(pcModeSwitch)->setBBoxCallback([this] {
+            if(VisualTouched)
+                this->updateVisual();
+        });
+    }
 }
 
 ViewProviderPartExt::~ViewProviderPartExt()

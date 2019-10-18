@@ -508,11 +508,13 @@ void View3DInventorViewer::init()
 
     auto selRoot = new SoFCSelectionRoot;
     selRoot->selectionStyle = SoFCSelectionRoot::PassThrough;
+    selRoot->overrideSwitch = true;
     pcGroupOnTopSel = selRoot;
     pcGroupOnTopSel->setName("GroupOnTopSel");
     pcGroupOnTopSel->ref();
     pcGroupOnTop->addChild(pcGroupOnTopSel);
     selRoot = new SoFCSelectionRoot;
+    selRoot->overrideSwitch = true;
     selRoot->selectionStyle = SoFCSelectionRoot::PassThrough;
     pcGroupOnTopPreSel = selRoot;
     pcGroupOnTopPreSel->setName("GroupOnTopPreSel");
@@ -791,7 +793,7 @@ void View3DInventorViewer::checkGroupOnTop(const SelectionChanges &Reason) {
         return;
     auto vp = dynamic_cast<ViewProviderDocumentObject*>(
             Application::Instance->getViewProvider(obj));
-    if(!vp || !vp->isSelectable() || !vp->isShow())
+    if(!vp || !vp->isSelectable())
         return;
     auto svp = vp;
     if(subname && *subname) {
@@ -851,15 +853,6 @@ void View3DInventorViewer::checkGroupOnTop(const SelectionChanges &Reason) {
                 Application::Instance->getViewProvider(grp));
         if(!grpVp) break;
         auto childRoot = grpVp->getChildRoot();
-        auto modeSwitch = grpVp->getModeSwitch();
-        auto idx = modeSwitch->whichChild.getValue();
-        if(idx<0 || idx>=modeSwitch->getNumChildren() ||
-           modeSwitch->getChild(idx)!=childRoot)
-        {
-            FC_LOG("skip " << obj->getFullName() << '.' << (subname?subname:"") 
-                    << ", hidden inside geo group");
-            return;
-        }
         if(childRoot->findChild(childVp->getRoot())<0) {
             FC_WARN("cannot find '" << childVp->getObject()->getFullName() 
                     << "' in geo group '" << grp->getNameInDocument() << "'");

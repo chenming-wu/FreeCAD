@@ -1000,6 +1000,137 @@ bool SoFCSelectionRoot::StackComp::operator()(const Stack &a, const Stack &b) co
     }
     return false;
 }
+
+// ---------------------------------------------------------------------------------
+SO_NODE_SOURCE(SoFCSwitch)
+
+SoFCSwitch::SoFCSwitch()
+{
+    SO_NODE_CONSTRUCTOR(SoFCSwitch);
+    SO_NODE_ADD_FIELD(defaultChild,  (0));
+}
+
+// switch to defaultChild when invisible
+#define FC_SWITCH_DEFAULT (-10)
+
+void SoFCSwitch::switchDefault(SoAction *action, bool enable) {
+    if(action) 
+        SoSwitchElement::set(action->getState(),enable?-10:-1);
+}
+
+struct SwitchInfo {
+    CoinPtr<SoPath> path;
+    int idx;
+
+    SwitchInfo(SoPath *p)
+        :path(p),idx(0)
+    {}
+};
+
+static thread_local std::deque<SwitchInfo> _SwitchStack;
+
+void SoFCSwitch::doAction(SoAction *action) {
+    int idx = SoSwitchElement::get(action->getState());
+    if(idx!=FC_SWITCH_DEFAULT
+            || (action->isOfType(SoCallbackAction::getClassTypeId()) &&
+                ((SoCallbackAction *)action)->isCallbackAll()))
+    {
+        inherited::doAction(action);
+        return;
+    }
+
+    if(_SwitchStack.size() && _SwitchStack.back().path) {
+        auto &path = _SwitchStack.back().path;
+        int &i = _SwitchStack.back().idx;
+        int count = path->getLength();
+        for(;i<count;++i) {
+            if(this == path->getNode(i)) {
+                if(i+1!=count) 
+                    idx = path->getIndex(i+1);
+                break;
+            }
+        }
+        if(i>=count) {
+            path.reset();
+            SoSwitchElement::set(action->getState(),-1);
+            inherited::doAction(action);
+            return;
+        }
+    }
+
+    if(idx < 0) {
+        idx = this->whichChild.getValue();
+        if(idx < 0)
+            idx = this->defaultChild.getValue();
+    }
+
+    if(idx < 0 || idx >= this->getNumChildren()) {
+        inherited::doAction(action);
+        return;
+    }
+
+    int numindices;
+    const int * indices;
+    SoAction::PathCode pathcode = action->getPathCode(numindices, indices);
+
+    if (pathcode == SoAction::IN_PATH) {
+        // traverse only if one path matches idx
+        for (int i = 0; i < numindices; i++) {
+            if (indices[i] == idx) {
+                this->children->traverse(action, idx);
+                break;
+            }
+        }
+    } else 
+        this->children->traverse(action, idx);
+}
+
+void SoFCSwitch::getBoundingBox(SoGetBoundingBoxAction * action)
+{
+    if(cb)
+        cb();
+    doAction(action);
+}
+
+void SoFCSwitch::search(SoSearchAction * action)
+{
+    SoNode::search(action);
+    if (action->isFound()) return;
+
+    if (action->isSearchingAll()) {
+        this->children->traverse(action);
+    }
+    else {
+        doAction(action);
+    }
+}
+
+void SoFCSwitch::callback(SoCallbackAction *action)
+{
+    doAction(action);
+}
+
+void SoFCSwitch::pick(SoPickAction *action)
+{
+    doAction((SoAction*)action);
+}
+
+void SoFCSwitch::handleEvent(SoHandleEventAction *action)
+{
+    doAction(action);
+}
+
+void SoFCSwitch::initClass(void)
+{
+    SO_NODE_INIT_CLASS(SoFCSwitch,SoSwitch,"FCSwitch");
+}
+
+void SoFCSwitch::finish()
+{
+    atexit_cleanup();
+}
+
+
 // ---------------------------------------------------------------------------------
 SoSeparator::CacheEnabled SoFCSeparator::CacheMode = SoSeparator::AUTO;
 SO_NODE_SOURCE(SoFCSeparator)
@@ -1081,6 +1212,7 @@ SoFCSelectionRoot::SoFCSelectionRoot(bool trackCacheMode)
     :SoFCSeparator(trackCacheMode)
 {
     SO_NODE_CONSTRUCTOR(SoFCSelectionRoot);
+    SO_NODE_ADD_FIELD(overrideSwitch,  (false));
     SO_NODE_ADD_FIELD(selectionStyle,(Full));
     SO_NODE_DEFINE_ENUM_VALUE(SelectStyles, Full);
     SO_NODE_DEFINE_ENUM_VALUE(SelectStyles, Box);
@@ -1213,6 +1345,7 @@ bool SoFCSelectionRoot::renderBBox(SoGLRenderAction *action, SoNode *node, SbCol
         // The viewport region will be replaced every time the action is
         // used, so we can just feed it a dummy here.
         data->bboxaction = new SoGetBoundingBoxAction(SbViewportRegion());
+        SoFCSwitch::switchDefault(data->bboxaction);
         data->cube = new SoCube;
         data->cube->ref();
         data->packer = new SoColorPacker;
@@ -1267,6 +1400,8 @@ void SoFCSelectionRoot::renderPrivate(SoGLRenderAction * action, bool inPath) {
         }
         return;
     }
+    if(overrideSwitch.getValue())
+        SoFCSwitch::switchDefault(action);
     SelStack.push_back(this);
     if(_renderPrivate(action,inPath)) {
         if(inPath)
@@ -1450,6 +1585,8 @@ void SoFCSelectionRoot::moveActionStack(SoAction *from, SoAction *to, bool erase
         }\
         return;\
     }\
+    if(overrideSwitch.getValue())\
+        SoFCSwitch::switchDefault(action);\
     stack.push_back(this);\
     auto size = stack.size();
 
@@ -1755,6 +1892,15 @@ void SoFCPathAnnotation::GLRenderBelowPath(SoGLRenderAction * action)
                     }
                 }
             }
+
+            // SoFCSelectionRoot will trigger switching override for all lower
+            // hierarchy SoFCSwitch nodes. This means all lower hierarchy
+            // children will made visible. This could cause slow down in
+            // rendering. Our goal here is to only override switches within the
+            // configured path, and turn off override below the path
+
+            _SwitchStack.emplace_back(path);
+
             if(!bbox)
                 inherited::GLRenderInPath(action);
             else {
@@ -1767,6 +1913,8 @@ void SoFCPathAnnotation::GLRenderBelowPath(SoGLRenderAction * action)
                 else
                     inherited::GLRenderInPath(action);
             }
+
+            _SwitchStack.pop_back();
         }
 
         if (zbenabled) glEnable(GL_DEPTH_TEST);
@@ -1818,12 +1966,15 @@ void SoFCPathAnnotation::setPath(SoPath *newPath) {
 void SoFCPathAnnotation::getBoundingBox(SoGetBoundingBoxAction * action)
 {
     if(path) {
+        _SwitchStack.emplace_back(path);
         SoGetBoundingBoxAction bboxAction(action->getViewportRegion());
         SoFCSelectionRoot::moveActionStack(action,&bboxAction,false);
+        SoSwitchElement::set(bboxAction.getState(),SoSwitchElement::get(action->getState()));
         bboxAction.apply(path);
         SoFCSelectionRoot::moveActionStack(&bboxAction,action,true);
         auto bbox = bboxAction.getBoundingBox();
         if(!bbox.isEmpty())
             action->extendBy(bbox);
+        _SwitchStack.pop_back();
     }
 }

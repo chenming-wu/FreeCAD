@@ -566,8 +566,9 @@ bool ViewProviderDocumentObject::getDetailPath(
         path->truncate(len);
     } else {
         // Do not account for our own visibility, we maybe called by a Link
-        // that has independent visibility
-        if(pcModeSwitch->getChild(getDefaultMode())!=childRoot)
+        // that has independent visibility. Just make sure the child root node
+        // is indeed a child of mode switch.
+        if(pcModeSwitch->findChild(childRoot)<0)
             return false;
         path->append(childRoot);
     }

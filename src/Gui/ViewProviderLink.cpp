@@ -274,9 +274,19 @@ public:
     void updateSwitch(SoSwitch *node=0) {
         if(!isLinked() || !pcLinkedSwitch) return;
         int index = pcLinkedSwitch->whichChild.getValue();
+        int defIndex = -1;
+        if(pcLinkedSwitch->isOfType(SoFCSwitch::getClassTypeId()))
+            defIndex = static_cast<SoFCSwitch*>(pcLinkedSwitch.get())->defaultChild.getValue();
         for(size_t i=0;i<pcSwitches.size();++i) {
             if(!pcSwitches[i] || (node && node!=pcSwitches[i])) 
                 continue;
+
+            if(pcSwitches[i]->isOfType(SoFCSwitch::getClassTypeId())) {
+                auto node = static_cast<SoFCSwitch*>(pcSwitches[i].get());
+                if(node->defaultChild.getValue() != defIndex)
+                    node->defaultChild.setValue(defIndex);
+            }
+
             int count = pcSwitches[i]->getNumChildren();
             if((index<0 && i==LinkView::SnapshotChild) || !count)
                 pcSwitches[i]->whichChild = -1;
@@ -378,7 +388,7 @@ public:
             ss << pcLinked->getObject()->getNameInDocument() 
                 << "(" << type << ')';
             pcSnapshot->setName(ss.str().c_str());
-            pcModeSwitch = new SoSwitch;
+            pcModeSwitch = new SoFCSwitch;
         }
 
         pcLinkedSwitch.reset();
@@ -570,11 +580,9 @@ public:
         if(*subname == 0) return true;
 
         auto pcSwitch = pcSwitches[type];
-        if(!pcChildGroup || !pcSwitch || pcSwitch->whichChild.getValue()<0 ||
-            pcSwitch->getChild(pcSwitch->whichChild.getValue())!=pcChildGroup)
-        {
+        if(!pcChildGroup || !pcSwitch || !Data::ComplexGeoData::isElementName(subname)) 
             return pcLinked->getDetailPath(subname,path,false,det);
-        }
+
         if(path){
             appendPath(path,pcChildGroup);
             if(pcLinked->getChildRoot())
@@ -835,7 +843,7 @@ public:
     Element(LinkView &handle):handle(handle) {
         if(handle.childType!=LinkView::SnapshotMax) {
             pcRoot = new SoFCSelectionRoot(true);
-            pcSwitch = new SoSwitch;
+            pcSwitch = new SoFCSwitch;
             pcSwitch->addChild(pcRoot);
             pcSwitch->whichChild = 0;
         }
@@ -892,7 +900,7 @@ public:
         if(handle.childType != LinkView::SnapshotMax) {
             if(!pcSwitch) {
                 pcRoot = new SoFCSelectionRoot(true);
-                pcSwitch = new SoSwitch;
+                pcSwitch = new SoFCSwitch;
                 pcSwitch->addChild(pcRoot);
                 pcSwitch->whichChild = 0;
             }
