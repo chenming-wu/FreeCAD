@@ -293,7 +293,6 @@ protected:
     void checkGeoElementMap(const App::DocumentObject *obj, 
         const App::DocumentObject *linked, PyObject **pyObj, const char *postfix) const;
     void updateGroup();
-    void slotChangedPlainGroup(const App::DocumentObject &, const App::Property &);
 
 protected:
     std::vector<Property *> props;

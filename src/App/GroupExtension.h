@@ -151,7 +151,7 @@ private:
     bool recursiveHasObject(const DocumentObject* obj, const GroupExtension* group, std::vector<const GroupExtension*> history) const;
 
     // for tracking children visibility
-    void slotChildChanged(const App::DocumentObject&, const App::Property&);
+    void slotChildChanged(const App::Property&);
     std::unordered_map<const App::DocumentObject*, boost::signals2::scoped_connection> _Conns;
     bool _togglingVisibility = false;
 };

@@ -723,12 +723,6 @@ void LinkBaseExtension::parseSubName() const {
     }
 }
 
-void LinkBaseExtension::slotChangedPlainGroup(const App::DocumentObject &obj, const App::Property &prop) {
-    auto group = obj.getExtensionByType<GroupExtension>(true,false);
-    if(group && &prop == &group->Group)
-        updateGroup();
-}
-
 void LinkBaseExtension::updateGroup() {
     std::vector<GroupExtension*> groups;
     std::unordered_set<const App::DocumentObject*> groupSet;
@@ -757,22 +751,23 @@ void LinkBaseExtension::updateGroup() {
             if(!conn.connected()) {
                 FC_LOG("new group connection " << getExtendedObject()->getFullName() 
                         << " -> " << group->getFullName());
-                conn = group->signalChanged.connect(
-                        boost::bind(&LinkBaseExtension::slotChangedPlainGroup,this,_1,_2));
+                conn = ext->Group.signalChanged.connect(
+                        boost::bind(&LinkBaseExtension::updateGroup,this));
             }
             std::size_t count = children.size();
             ext->getAllChildren(children,childSet);
             for(;count<children.size();++count) {
                 auto child = children[count];
-                if(!child->getExtensionByType<GroupExtension>(true,false))
+                auto childGroup = child->getExtensionByType<GroupExtension>(true,false);
+                if(!childGroup)
                     continue;
                 groupSet.insert(child);
                 auto &conn = plainGroupConns[child];
                 if(!conn.connected()) {
                     FC_LOG("new group connection " << getExtendedObject()->getFullName() 
                             << " -> " << child->getFullName());
-                    conn = child->signalChanged.connect(
-                            boost::bind(&LinkBaseExtension::slotChangedPlainGroup,this,_1,_2));
+                    conn = childGroup->Group.signalChanged.connect(
+                            boost::bind(&LinkBaseExtension::updateGroup,this));
                 }
             }
         }
